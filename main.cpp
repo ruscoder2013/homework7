@@ -8,6 +8,62 @@
 #include <queue>
 #include <algorithm>
 #include <thread>
+#include <condition_variable>
+
+template<class T>
+class threadsafe_queue {
+public:
+    threadsafe_queue() {}
+    void push(T value) {
+        std::lock_guard<std::mutex> lk(mut);
+        data_queue.push(value);
+        data_cond.notify_one();
+    }
+
+    bool try_pop(T& value) {
+        std::lock_guard<std::mutex> lk(mut);
+        if(data_queue.empty())
+            return false;
+        value = data_queue.front();
+        data_queue.pop();
+        return true;
+    }
+    std::shared_ptr<T> try_pop() {
+        std::lock_guard<std::mutex> lk(mut);
+        if(data_queue.empty())
+            return std::shared_ptr<T>();
+        std::shared_ptr<T> res(std::make_shared<T>(data_queue.front()));
+        data_queue.pop();
+        return res;
+    }
+
+    void wait_and_pop(T& value) {
+        std::unique_lock<std::mutex> lk(mut);
+        data_cond.wait(lk, [this]() {
+            return !data_queue.empty();
+        });
+        value=data_queue.front();
+        data_queue.pop();
+    }
+    std::shared_ptr<T> wait_and_pop() {
+        std::unique_lock<std::mutex> lk(mut);
+        data_cond.wait(lk, [this]() {
+            return !data_queue.empty();
+        });
+        std::shared_ptr<T> res(std::make_shared<T>(data_queue.front()));
+        data_queue.pop();
+        return res;
+    }
+
+    bool empty() const {
+        std::lock_guard<std::mutex> lk(mut);
+        return data_queue.empty();
+    }
+private:
+    mutable std::mutex mut;
+    std::queue<T> data_queue;
+    std::condition_variable data_cond;
+};
 
 std::string get_bulk_str(std::vector<std::string>& commands) {
     std::ostringstream oss;
@@ -45,7 +101,7 @@ std::string name_file() {
     return name;
 }
 
-void write_to_file(std::vector<std::string>& commands,
+/*void write_to_file(std::vector<std::string>& commands,
 std::queue<std::string>& messages, bool& ready_flag, std::string file_name,
 std::ofstream& out) {
     for(int i = 0; i < commands.size(); i++)
@@ -53,9 +109,9 @@ std::ofstream& out) {
     if (messages.empty()) return;
     out.open(file_name);
     ready_flag = true;
-}
+}*/
 
-void write_to_cout(std::queue<std::string> &message, bool& is_finished) {
+/*void write_to_cout(std::queue<std::string> &message, bool& is_finished) {
     while(!is_finished) {
         while(!message.empty())
         {
@@ -64,10 +120,10 @@ void write_to_cout(std::queue<std::string> &message, bool& is_finished) {
             message.pop();
         }
     }
-}
+}*/
 
 
-void write_to_file_1(std::queue<std::string>& messages,
+/*void write_to_file_1(std::queue<std::string>& messages,
                      bool& is_finished,
                      bool& ready_flag,
                      bool chet, 
@@ -98,7 +154,7 @@ void write_to_file_1(std::queue<std::string>& messages,
             if(out.is_open()) out.close();
         }
     }
-}
+}*/
 
 
 namespace async {
@@ -106,8 +162,9 @@ namespace async {
         std::thread *log_thread;
         std::thread *file1_thread;
         std::thread *file2_thread;
-
-        std::queue<std::string> messages;
+        std::condition_variable cv;
+        std::mutex mut;
+        threadsafe_queue<std::string> messages;
         std::queue<std::string> messages_2;
         std::vector<std::string> commands;
         std::chrono::milliseconds ms;
@@ -133,13 +190,33 @@ namespace async {
     std::vector<handle_t> handles;
     
     void write_to_cout2(Handle &handle) {
+        /*std::unique_lock<std::mutex> lk(handle.mut);
         while(!handle.finish) {
+            handle.cv.wait(lk, [&handle](){ 
+                return !handle.messages.empty() || handle.finish; 
+                });
             while(!handle.messages.empty())
             {
                 std::string str = handle.messages.front();
                 std::cout << str;
                 handle.messages.pop();
             }
+            if(handle.finish)
+                break; 
+        }*/
+        std::unique_lock<std::mutex> lk(handle.mut);
+        while(!handle.finish) {
+            handle.cv.wait(lk, [&handle](){ 
+                return !handle.messages.empty() || handle.finish; 
+                });
+            while(!handle.messages.empty())
+            {
+                std::string str;
+                auto success = handle.messages.try_pop(str);
+                std::cout << str;
+            }
+            if(handle.finish)
+                break; 
         }
     }
 
@@ -158,17 +235,20 @@ namespace async {
     }
 
     
+    void write_to_file(handle_t handel) {
+            for(int i = 0; i < handel->commands.size(); i++)
+                handel->messages_2.push(handel->commands[i]);
+            if (handel->messages_2.empty()) return;
+            handel->out.open(handel->file_name);
+            handel->ready_flag = true;
+    }
 
     void try_to_show(handle_t handel) {
         if(handel->brace_count==0) {
             auto str = get_bulk_str(handel->commands);
             handel->messages.push(str);
-            //std::cout << "push" << std::endl;
-            /*write_to_file(handel->commands, 
-                      handel->messages_2, 
-                      handel->ready_flag, 
-                      handel->file_name, 
-                      handel->out);*/
+            handel->cv.notify_one();
+            write_to_file(handel);
             handel->commands.clear();
         }
         
@@ -216,6 +296,7 @@ namespace async {
             try_to_show(handler);
             handles.erase(missing);
             handler->finish = true;
+            handler->cv.notify_one();
             handler->log_thread->join();
             /*handler->file1_thread->join();
             handler->file2_thread->join();*/
