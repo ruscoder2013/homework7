@@ -87,7 +87,7 @@ std::vector<file_info*>& files)
             {
                 bool make_recurse = true;
                 for(int j = 0; j < exclude_this_directory.size(); j++)
-                    if (dir->path().filename() == exclude_this_directory[j]) {
+                    if (dir->path().string() == exclude_this_directory[j]) {
                         make_recurse = false;
                     }
                 if (!make_recurse) {
