@@ -173,6 +173,7 @@ int main(int argc, const char *argv[]) {
     for(int i = 0; i < (files.size()-1); i++)
     {
         int n_last_equal_size = i;
+        bool show_first = false;
         for(int j = i+1; j < files.size(); j++)
         {
             if(files[i]->size==files[j]->size)
@@ -227,13 +228,17 @@ int main(int argc, const char *argv[]) {
 
                 if(equal)
                 {
-                    std::cout << files[i]->path << std::endl;
+                    if(!show_first)
+                       std::cout << files[i]->path << std::endl;
                     std::cout << files[j]->path << std::endl;
+                    show_first = true;
                 }
                 n_last_equal_size++; 
                 file1.close();
                 file2.close();   
             }
+            if (show_first)
+               std::cout << std::endl;
         }    
         i = n_last_equal_size;   
     }
