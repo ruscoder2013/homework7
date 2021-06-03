@@ -1,317 +1,242 @@
+#include <boost/filesystem/operations.hpp>
+#include <boost/uuid/detail/md5.hpp>
+#include <boost/uuid/name_generator_md5.hpp>
+#include <boost/uuid/uuid.hpp>            // uuid class
+#include <boost/uuid/uuid_generators.hpp> // generators
+#include <boost/uuid/uuid_io.hpp>  
+#include <boost/algorithm/hex.hpp>
+#include <boost/program_options.hpp>
 #include <iostream>
-#include <string>
 #include <vector>
-#include <chrono>
-#include <sstream>
-#include <iomanip>
-#include <fstream>
-#include <queue>
 #include <algorithm>
-#include <thread>
-#include <condition_variable>
+#include <string>
+#include <fstream>
 
-template<class T>
-class threadsafe_queue {
-public:
-    threadsafe_queue() {}
-    void push(T value) {
-        std::lock_guard<std::mutex> lk(mut);
-        data_queue.push(value);
-        data_cond.notify_one();
-    }
+using boost::uuids::detail::md5;
 
-    bool try_pop(T& value) {
-        std::lock_guard<std::mutex> lk(mut);
-        if(data_queue.empty())
-            return false;
-        value = data_queue.front();
-        data_queue.pop();
-        return true;
+boost::uuids::uuid hash(char* str, int N, int type_hash) {
+    md5 hash;
+    md5::digest_type digest;
+    std::string s(str, N);
+    if (type_hash == 0)
+    {
+        boost::uuids::name_generator_md5 gen(boost::uuids::ns::url());
+        return gen(s.c_str(), s.size());
     }
-    std::shared_ptr<T> try_pop() {
-        std::lock_guard<std::mutex> lk(mut);
-        if(data_queue.empty())
-            return std::shared_ptr<T>();
-        std::shared_ptr<T> res(std::make_shared<T>(data_queue.front()));
-        data_queue.pop();
-        return res;
+    else 
+    {
+        boost::uuids::name_generator_sha1 gen(boost::uuids::ns::url());
+        return gen(s.c_str(), s.size());
     }
+}
 
-    void wait_and_pop(T& value) {
-        std::unique_lock<std::mutex> lk(mut);
-        data_cond.wait(lk, [this]() {
-            return !data_queue.empty();
-        });
-        value=data_queue.front();
-        data_queue.pop();
-    }
-    std::shared_ptr<T> wait_and_pop() {
-        std::unique_lock<std::mutex> lk(mut);
-        data_cond.wait(lk, [this]() {
-            return !data_queue.empty();
-        });
-        std::shared_ptr<T> res(std::make_shared<T>(data_queue.front()));
-        data_queue.pop();
-        return res;
-    }
-
-    bool empty() const {
-        std::lock_guard<std::mutex> lk(mut);
-        return data_queue.empty();
-    }
-private:
-    mutable std::mutex mut;
-    std::queue<T> data_queue;
-    std::condition_variable data_cond;
+struct file_info {
+    file_info(std::string file_name, int size, std::string path): name(file_name),
+    size(size), path(path) {}
+    std::string name;
+    std::string path;
+    int size;
+    std::vector<int> file;
+    std::vector<boost::uuids::uuid> hash;
 };
 
-std::string get_bulk_str(std::vector<std::string>& commands) {
-    std::ostringstream oss;
-    if (commands.size()==0) return "";
-    oss << "bulk: ";
-    for(int i = 0; i < commands.size(); i++)
-    {
-        if (i>0)
-            oss << ", ";
-        oss << commands[i];
-    }
-    oss << std::endl;
-    return oss.str();
-}
-
-std::string time_from_epoch()
+void process_dir(boost::filesystem::recursive_directory_iterator begin,
+    std::vector<file_info*>& files, int N,  int min_size)
 {
-    std::ostringstream oss;
-    using namespace std::chrono;
-    system_clock::time_point tp = system_clock::now();
-    system_clock::duration dtn = tp.time_since_epoch();
-    auto tt = dtn.count() * system_clock::period::num / system_clock::period::den;
-    oss << "bulk" << tt << ".log";
-    return oss.str();
-}
-
-std::string name_file() {
-    static std::string prev_name = "";
-    std::string name = time_from_epoch();
-    if(name.compare(prev_name)==0)
+    boost::filesystem::file_status fs = 
+            boost::filesystem::status(*begin);
+    std::cout << *begin << '\n';
+    if (boost::filesystem::is_regular_file(begin->path()))
     {
-        name += "_1";
-    }
-    prev_name = name;
-    return name;
+        int file_size = boost::filesystem::file_size(begin->path());
+        if (file_size%N!=0)
+            file_size += N-(file_size%N);
+        file_info* file = new file_info(begin->path().filename().string(), 
+                                    file_size,
+                                    begin->path().string());
+        files.push_back(file);
+        std::cout << begin->path().filename() << "   [ " << boost::filesystem::file_size(begin->path()) << " ]\n";
+    }    
 }
 
-/*void write_to_file(std::vector<std::string>& commands,
-std::queue<std::string>& messages, bool& ready_flag, std::string file_name,
-std::ofstream& out) {
-    for(int i = 0; i < commands.size(); i++)
-        messages.push(commands[i]);
-    if (messages.empty()) return;
-    out.open(file_name);
-    ready_flag = true;
-}*/
+void process_dir_not_rec(boost::filesystem::directory_iterator begin,
+    std::vector<file_info*>& files, int N, int min_size)
+{
+    boost::filesystem::file_status fs = 
+            boost::filesystem::status(*begin);
+    std::cout << *begin << '\n';
+    if (boost::filesystem::is_regular_file(begin->path()))
+    {
+        int file_size = boost::filesystem::file_size(begin->path());
+        if (file_size%N!=0)
+            file_size += N-(file_size%N);
+        file_info* file = new file_info(begin->path().filename().string(), 
+                                    file_size,
+                                    begin->path().string());
+        files.push_back(file);
+        std::cout << begin->path().filename() << "   [ " << boost::filesystem::file_size(begin->path()) << " ]\n";
+    }    
+}
 
-/*void write_to_cout(std::queue<std::string> &message, bool& is_finished) {
-    while(!is_finished) {
-        while(!message.empty())
-        {
-            std::string str = message.front();
-            std::cout << str;
-            message.pop();
-        }
-    }
-}*/
-
-
-/*void write_to_file_1(std::queue<std::string>& messages,
-                     bool& is_finished,
-                     bool& ready_flag,
-                     bool chet, 
-                     std::ofstream& out) {
-    while(!is_finished) {
-        if(ready_flag)
-        {
-            std::cout << "ready flag" << std::endl;
-            while(!messages.empty()) {
-                if(chet) {
-                    if(messages.size()%2==0) {
-                        std::string str = messages.front();
-                        std::cout << "thread 1 " << str << std::endl;
-                        out << str << std::endl;
-                        messages.pop();
+void selective_search( std::vector<std::string>& search_here, 
+std::vector<std::string>& exclude_this_directory, 
+std::vector<std::string>& file_masks,
+int min_size, bool recursive, int block_size,
+std::vector<file_info*>& files)
+{
+    if (recursive)
+        for(int i = 0; i<search_here.size(); i++) {
+            boost::filesystem::recursive_directory_iterator dir( search_here[i]), end;
+            while (dir != end)
+            {
+                bool make_recurse = true;
+                for(int j = 0; j < exclude_this_directory.size(); j++)
+                    if (dir->path().filename() == exclude_this_directory[j]) {
+                        make_recurse = false;
                     }
+                if (!make_recurse) {
+                    dir.no_push(); // don't recurse into this directory.
                 }
                 else {
-                    if(messages.size()%2!=0) {
-                        std::string str = messages.front();
-                        std::cout << "thread 2 " << str << std::endl;
-                        out << str << std::endl;
-                        messages.pop();
-                    }
+                    process_dir(dir, files, block_size, min_size);
                 }
+                ++dir;
             }
-            ready_flag = false;
-            if(out.is_open()) out.close();
         }
-    }
-}*/
-
-
-namespace async {
-    struct Handle {
-        std::thread *log_thread;
-        std::thread *file1_thread;
-        std::thread *file2_thread;
-        std::condition_variable cv;
-        std::mutex mut;
-        threadsafe_queue<std::string> messages;
-        std::queue<std::string> messages_2;
-        std::vector<std::string> commands;
-        std::chrono::milliseconds ms;
-        std::string string_buffer;
-        std::string cmd;
-        std::string file_name; 
-        int brace_count = 0;
-        int handle = 1;
-        bool finish = false;
-        bool ready_flag = false;
-        int N;
-        std::ofstream out;
-        ~Handle() {
-            if(log_thread!=nullptr)
-                delete log_thread;
-            if(file1_thread!=nullptr)
-                delete file1_thread;
-            if(file2_thread!=nullptr)
-                delete file2_thread;
-        }
-    };
-    using handle_t = Handle*;
-    std::vector<handle_t> handles;
-    
-    void write_to_cout2(Handle &handle) {
-        /*std::unique_lock<std::mutex> lk(handle.mut);
-        while(!handle.finish) {
-            handle.cv.wait(lk, [&handle](){ 
-                return !handle.messages.empty() || handle.finish; 
-                });
-            while(!handle.messages.empty())
+    else
+        for(int i = 0; i<search_here.size(); i++) {
+            boost::filesystem::directory_iterator dir( search_here[i]), end;
+            while (dir != end)
             {
-                std::string str = handle.messages.front();
-                std::cout << str;
-                handle.messages.pop();
+                process_dir_not_rec(dir, files, block_size, min_size);
+                ++dir;
             }
-            if(handle.finish)
-                break; 
-        }*/
-        std::unique_lock<std::mutex> lk(handle.mut);
-        while(!handle.finish) {
-            handle.cv.wait(lk, [&handle](){ 
-                return !handle.messages.empty() || handle.finish; 
-                });
-            while(!handle.messages.empty())
-            {
-                std::string str;
-                auto success = handle.messages.try_pop(str);
-                std::cout << str;
-            }
-            if(handle.finish)
-                break; 
-        }
-    }
-
-    handle_t connect(std::size_t bulk) {
-        handle_t handle = new Handle();
-        //handle->log_thread = new std::thread(write_to_cout, std::ref(handle->messages), std::ref(handle->finish));
-        handle->N = bulk;
-        handle->log_thread = new std::thread(async::write_to_cout2, std::ref(*handle));
-        
-        /*handle->file1_thread = new std::thread(write_to_file_1, std::ref(handle->messages_2), std::ref(handle->finish),
-        std::ref(handle->ready_flag), true, std::ref(out));
-        handle->file2_thread = new std::thread(write_to_file_1, std::ref(handle->messages_2), std::ref(handle->finish),
-        std::ref(handle->ready_flag), false, std::ref(out));*/
-        handles.push_back(handle);
-        return handle;
-    }
-
-    
-    void write_to_file(handle_t handel) {
-            for(int i = 0; i < handel->commands.size(); i++)
-                handel->messages_2.push(handel->commands[i]);
-            if (handel->messages_2.empty()) return;
-            handel->out.open(handel->file_name);
-            handel->ready_flag = true;
-    }
-
-    void try_to_show(handle_t handel) {
-        if(handel->brace_count==0) {
-            auto str = get_bulk_str(handel->commands);
-            handel->messages.push(str);
-            handel->cv.notify_one();
-            write_to_file(handel);
-            handel->commands.clear();
-        }
-        
-    }
-
-    void receive(handle_t handler, const char* data, std::size_t size) {
-        std::string s(data);
-        if(handler->string_buffer.size()!=0)
-        {
-            s = handler->string_buffer + s;
-            handler->string_buffer.clear();
-        }
-        std::stringstream ss(s);
-        std::string cmd;
-        std::vector<std::string> elems;
-        while (std::getline(ss, cmd)) {
-            if(ss.eof()) continue;
-            //std::cout << cmd << std::endl;
-            if(cmd.compare("{")==0) {
-                try_to_show(handler);
-                handler->brace_count++;
-            } else if(cmd.compare("}")==0) {
-                handler->brace_count--;
-                try_to_show(handler);
-                if(handler->brace_count<0) {
-                    handler->brace_count++;
-                    continue;
-                }
-            } else {
-                if (handler->commands.size()==0)
-                    handler->file_name = name_file();
-                handler->commands.push_back(cmd);
-                if(handler->commands.size()>=handler->N)
-                    try_to_show(handler);
-            }
-        }
-        if(data[size-1]!='\n')
-            handler->string_buffer = cmd;
-        //try_to_show(handler);
-    }
-    void disconnect(handle_t handler) {
-        std::vector<handle_t>::iterator missing = std::find(handles.begin(), handles.end(), handler);
-        if(missing!=handles.end())
-        {
-            try_to_show(handler);
-            handles.erase(missing);
-            handler->finish = true;
-            handler->cv.notify_one();
-            handler->log_thread->join();
-            /*handler->file1_thread->join();
-            handler->file2_thread->join();*/
-            delete handler;
-        }
-    }
+        }        
 }
 
+namespace po = boost::program_options;
 
-int main(int argc, char *argv[]) {
-    auto handler = async::connect(3);
-    async::receive(handler, "cmd1\n", 5);
-    async::receive(handler, "cmd2\n", 5);
-    async::receive(handler, "cmd3\ncmd4\ncmd", 14);
-    async::receive(handler, "5\n", 3);
-    async::disconnect(handler);
+void set_bulk(size_t bulk) {
+    std::cout << "bulk size is " << bulk << std::endl;
+}
+
+int main(int argc, const char *argv[]) {
+    int min_file_size;
+    int block_size;
+    int hash_alg;
+    bool recursive;
+    po::options_description desc{"Allowed options"};
+    desc.add_options()
+            ("scan-dir", po::value<std::vector<std::string>>()->multitoken())
+            ("exclude-dir", po::value<std::vector<std::string>>()->multitoken())
+            ("recursive", po::value<bool>(&recursive)->default_value(true))
+            ("min-file-size", po::value<int>(&min_file_size)->default_value(1))
+            ("file-masks", po::value<std::vector<std::string>>()->multitoken())
+            ("block-size", po::value<int>(&block_size)->default_value(5))
+            ("hash", po::value<int>(&hash_alg)->default_value(0), "0 - md5, 1 - sha1")
+            ("help", "");
+
+    po::variables_map vm;
+    po::store(parse_command_line(argc, argv, desc), vm);
+    po::notify(vm);
+
+    std::vector<std::string> dirs;
+    std::vector<std::string> excl_dirs;
+    std::vector<std::string> file_masks;
+     if (vm.count("scan-dir")) {
+         dirs = vm["scan-dir"].as<std::vector<std::string>>();
+     }
+     else {
+         dirs.push_back(".");
+     }
+    if (vm.count("exclude-dir")) {
+        excl_dirs =  vm["exclude-dir"].as<std::vector<std::string>>();
+    }
+    if (vm.count("file-masks")) {
+        file_masks = vm["file-masks"].as<std::vector<std::string>>();
+    }
+
+    if (vm.count("help")) {
+        std::cout << desc << '\n';
+        return 0;
+    }
+
+    std::vector<file_info*> files;
+    int N = block_size;
+    selective_search(dirs, excl_dirs, file_masks, min_file_size, recursive, N, files);
+
+    std::sort(files.begin(), files.end(), 
+    [](file_info* v1, file_info* v2)->bool
+    {
+        return v1->size>v2->size;
+    });
+
+    for(int i = 0; i < files.size(); i++)
+        std::cout << files[i]->name << " " << files[i]->size << std::endl;
+\
+    for(int i = 0; i < (files.size()-1); i++)
+    {
+        int n_last_equal_size = i;
+        for(int j = i+1; j < files.size(); j++)
+        {
+            if(files[i]->size==files[j]->size)
+            {
+                bool equal = true;
+                int h1_size = files[i]->hash.size();
+                int h2_size = files[j]->hash.size();
+
+                std::ifstream file1(files[i]->path, std::ios::binary);
+                if(!file1) {}
+                std::ifstream file2(files[j]->path, std::ios::binary);
+                if(!file2) {}
+
+                file1.seekg(h1_size*N, std::ios::beg);
+                file2.seekg(h2_size*N, std::ios::beg);
+                char str1[N];
+                char str2[N];
+                bool end_read = false;
+                int k = 0;
+                while (!end_read) {
+                    boost::uuids::uuid h_1, h_2;
+                    if(k<h1_size)
+                        h_1 = files[i]->hash[k];
+                    else
+                    {
+                        if(file1.read(str1, N).eof()) 
+                            end_read = true;
+                        h_1 = hash(str1, block_size, hash_alg);
+                        files[i]->hash.push_back(h_1);
+                    }
+                    if(k<h2_size)
+                        h_2 = files[j]->hash[k];
+                    else
+                    {
+                        if(file2.read(str2, N).eof());
+                            end_read = true;
+                        h_2 = hash(str2, block_size, hash_alg);
+                        files[j]->hash.push_back(h_2);
+                    }
+                    //std::cout << h_1 << " " << h_2 << std::endl;
+                    if(h_1 != h_2)
+                    {
+                        equal = false;
+                        break;
+                    }
+                    else {
+                        
+                    }
+                    k++;
+                    //(!file1.read(str, N).eof())&&(
+                }
+
+                if(equal)
+                    std::cout << i << " equal " << j << std::endl;
+                n_last_equal_size++; 
+                file1.close();
+                file2.close();   
+            }
+        }    
+        i = n_last_equal_size;   
+    }
     return 0;
 }

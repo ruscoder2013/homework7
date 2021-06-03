@@ -1,24 +1,26 @@
 cmake_minimum_required(VERSION 3.5)
 
 project(bulk)
-find_package(Threads)
+FIND_PACKAGE( Boost 1.75 COMPONENTS program_options filesystem REQUIRED )
+INCLUDE_DIRECTORIES( ${Boost_INCLUDE_DIR} )
+
 add_executable(bulk main.cpp)
 
 set_target_properties(bulk PROPERTIES CXX_STANDARD 14 CXX_STANDARD_REQUIRED ON)
 
 target_link_libraries(bulk
-  ${CMAKE_THREAD_LIBS_INIT}
+${Boost_LIBRARIES}
   )
 
 if (MSVC)
     target_compile_options(
             bulk PRIVATE
-            /W4
+            /W4 -lboost_system
     )
 else ()
     target_compile_options(
             bulk PRIVATE
-            -Wall -Wextra -pedantic #-Werror
+            -Wall -Wextra -pedantic -lboost_system#-Werror
     )
 endif()
 
