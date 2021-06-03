@@ -1,6 +1,7 @@
 cmake_minimum_required(VERSION 3.5)
 
-project(bulk)
+set(BUILD_NUMBER 0)
+project(bulk  VERSION 7.0.${BUILD_NUMBER})
 FIND_PACKAGE( Boost 1.75 COMPONENTS program_options filesystem REQUIRED )
 INCLUDE_DIRECTORIES( ${Boost_INCLUDE_DIR} )
 
