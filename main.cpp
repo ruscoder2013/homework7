@@ -45,7 +45,6 @@ void process_dir(boost::filesystem::recursive_directory_iterator begin,
 {
     boost::filesystem::file_status fs = 
             boost::filesystem::status(*begin);
-    std::cout << *begin << '\n';
     if (boost::filesystem::is_regular_file(begin->path()))
     {
         int file_size = boost::filesystem::file_size(begin->path());
@@ -55,7 +54,6 @@ void process_dir(boost::filesystem::recursive_directory_iterator begin,
                                     file_size,
                                     begin->path().string());
         files.push_back(file);
-        std::cout << begin->path().filename() << "   [ " << boost::filesystem::file_size(begin->path()) << " ]\n";
     }    
 }
 
@@ -64,7 +62,6 @@ void process_dir_not_rec(boost::filesystem::directory_iterator begin,
 {
     boost::filesystem::file_status fs = 
             boost::filesystem::status(*begin);
-    std::cout << *begin << '\n';
     if (boost::filesystem::is_regular_file(begin->path()))
     {
         int file_size = boost::filesystem::file_size(begin->path());
@@ -74,7 +71,6 @@ void process_dir_not_rec(boost::filesystem::directory_iterator begin,
                                     file_size,
                                     begin->path().string());
         files.push_back(file);
-        std::cout << begin->path().filename() << "   [ " << boost::filesystem::file_size(begin->path()) << " ]\n";
     }    
 }
 
@@ -230,7 +226,10 @@ int main(int argc, const char *argv[]) {
                 }
 
                 if(equal)
-                    std::cout << i << " equal " << j << std::endl;
+                {
+                    std::cout << files[i]->path << std::endl;
+                    std::cout << files[j]->path << std::endl;
+                }
                 n_last_equal_size++; 
                 file1.close();
                 file2.close();   
