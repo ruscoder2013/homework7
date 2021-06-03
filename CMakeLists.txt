@@ -1,26 +1,26 @@
 cmake_minimum_required(VERSION 3.5)
 
 set(BUILD_NUMBER 0)
-project(bulk  VERSION 7.0.${BUILD_NUMBER})
+project(bayan  VERSION 7.0.${BUILD_NUMBER})
 FIND_PACKAGE( Boost COMPONENTS program_options filesystem REQUIRED )
 INCLUDE_DIRECTORIES( ${Boost_INCLUDE_DIR} )
 
-add_executable(bulk main.cpp)
+add_executable(bayan main.cpp)
 
-set_target_properties(bulk PROPERTIES CXX_STANDARD 14 CXX_STANDARD_REQUIRED ON)
+set_target_properties(bayan PROPERTIES CXX_STANDARD 14 CXX_STANDARD_REQUIRED ON)
 
-target_link_libraries(bulk
+target_link_libraries(bayan
 ${Boost_LIBRARIES}
   )
 
 if (MSVC)
     target_compile_options(
-            bulk PRIVATE
+            bayan PRIVATE
             /W4 -lboost_system
     )
 else ()
     target_compile_options(
-            bulk PRIVATE
+            bayan PRIVATE
             -Wall -Wextra -pedantic -lboost_system#-Werror
     )
 endif()
