@@ -48,12 +48,16 @@ void process_dir(boost::filesystem::recursive_directory_iterator begin,
     if (boost::filesystem::is_regular_file(begin->path()))
     {
         int file_size = boost::filesystem::file_size(begin->path());
-        if (file_size%N!=0)
-            file_size += N-(file_size%N);
-        file_info* file = new file_info(begin->path().filename().string(), 
-                                    file_size,
-                                    begin->path().string());
-        files.push_back(file);
+        if(file_size>=min_size)
+        {
+            if (file_size%N!=0)
+                file_size += N-(file_size%N);
+            file_info* file = new file_info(begin->path().filename().string(), 
+                                        file_size,
+                                        begin->path().string());
+            files.push_back(file);
+        }
+        
     }    
 }
 
@@ -65,12 +69,14 @@ void process_dir_not_rec(boost::filesystem::directory_iterator begin,
     if (boost::filesystem::is_regular_file(begin->path()))
     {
         int file_size = boost::filesystem::file_size(begin->path());
-        if (file_size%N!=0)
-            file_size += N-(file_size%N);
-        file_info* file = new file_info(begin->path().filename().string(), 
-                                    file_size,
-                                    begin->path().string());
-        files.push_back(file);
+        if (file_size >= min_size) {
+            if (file_size%N!=0)
+                file_size += N-(file_size%N);
+            file_info* file = new file_info(begin->path().filename().string(), 
+                                        file_size,
+                                        begin->path().string());
+            files.push_back(file);
+        }
     }    
 }
 
@@ -161,6 +167,7 @@ int main(int argc, const char *argv[]) {
     int N = block_size;
     selective_search(dirs, excl_dirs, file_masks, min_file_size, recursive, N, files);
 
+    
     std::sort(files.begin(), files.end(), 
     [](file_info* v1, file_info* v2)->bool
     {
@@ -169,7 +176,9 @@ int main(int argc, const char *argv[]) {
 
     /*for(int i = 0; i < files.size(); i++)
         std::cout << files[i]->name << " " << files[i]->path << std::endl;*/
-
+    
+    if (files.empty()) return 0;
+    
     for(int i = 0; i < (files.size()-1); i++)
     {
         int n_last_equal_size = i;
