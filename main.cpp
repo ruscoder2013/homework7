@@ -167,9 +167,9 @@ int main(int argc, const char *argv[]) {
         return v1->size>v2->size;
     });
 
-    for(int i = 0; i < files.size(); i++)
-        std::cout << files[i]->name << " " << files[i]->size << std::endl;
-\
+    /*for(int i = 0; i < files.size(); i++)
+        std::cout << files[i]->name << " " << files[i]->path << std::endl;*/
+
     for(int i = 0; i < (files.size()-1); i++)
     {
         int n_last_equal_size = i;
@@ -237,9 +237,9 @@ int main(int argc, const char *argv[]) {
                 file1.close();
                 file2.close();   
             }
-            if (show_first)
-               std::cout << std::endl;
-        }    
+        }   
+        if (show_first)
+               std::cout << std::endl; 
         i = n_last_equal_size;   
     }
     return 0;
