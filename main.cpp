@@ -44,7 +44,8 @@ struct file_info {
     std::vector<boost::uuids::uuid> hash;
 };
 
-void process_dir(boost::filesystem::recursive_directory_iterator begin,
+template<class T>
+void process_dir(T begin,
     std::vector<file_info*>& files, int N,  int min_size, std::vector<std::string>& file_masks)
 {
     boost::filesystem::file_status fs = 
@@ -74,36 +75,6 @@ void process_dir(boost::filesystem::recursive_directory_iterator begin,
             files.push_back(file);
         }
         
-    }    
-}
-
-void process_dir_not_rec(boost::filesystem::directory_iterator begin,
-    std::vector<file_info*>& files, int N, int min_size, std::vector<std::string>& file_masks)
-{
-    boost::filesystem::file_status fs = 
-            boost::filesystem::status(*begin);
-    if (boost::filesystem::is_regular_file(begin->path()))
-    {
-        if (!file_masks.empty()) {
-            bool set_mask = false;
-            for(int i = 0; i < file_masks.size(); i++)
-            {
-                std::regex e (file_masks[i]);
-                if (std::regex_match(begin->path().filename().string(),e)) {
-                    set_mask = true;
-                }
-            }
-            if(set_mask==false) return;
-        }
-        int file_size = boost::filesystem::file_size(begin->path());
-        if (file_size >= min_size) {
-            if (file_size%N!=0)
-                file_size += N-(file_size%N);
-            file_info* file = new file_info(begin->path().filename().string(), 
-                                        file_size,
-                                        begin->path().string());
-            files.push_back(file);
-        }
     }    
 }
 
@@ -137,7 +108,7 @@ std::vector<file_info*>& files)
             boost::filesystem::directory_iterator dir( search_here[i]), end;
             while (dir != end)
             {
-                process_dir_not_rec(dir, files, block_size, min_size, file_masks);
+                process_dir(dir, files, block_size, min_size, file_masks);
                 ++dir;
             }
         }        
