@@ -11,13 +11,16 @@
 #include <algorithm>
 #include <string>
 #include <fstream>
+#include <set>
 
 using boost::uuids::detail::md5;
 
 boost::uuids::uuid hash(char* str, int N, int type_hash) {
+    
     md5 hash;
     md5::digest_type digest;
     std::string s(str, N);
+    
     if (type_hash == 0)
     {
         boost::uuids::name_generator_md5 gen(boost::uuids::ns::url());
@@ -118,10 +121,6 @@ std::vector<file_info*>& files)
 
 namespace po = boost::program_options;
 
-void set_bulk(size_t bulk) {
-    std::cout << "bulk size is " << bulk << std::endl;
-}
-
 int main(int argc, const char *argv[]) {
     int min_file_size;
     int block_size;
@@ -178,14 +177,17 @@ int main(int argc, const char *argv[]) {
         std::cout << files[i]->name << " " << files[i]->path << std::endl;*/
     
     if (files.empty()) return 0;
-    
+
+    std::set<int> showed;
+    int last_file_size = files[0]->size;
     for(int i = 0; i < (files.size()-1); i++)
     {
-        int n_last_equal_size = i;
+        if(files[i]->size!=last_file_size)
+            showed.clear();
         bool show_first = false;
         for(int j = i+1; j < files.size(); j++)
         {
-            if(files[i]->size==files[j]->size)
+            if((files[i]->size==files[j]->size)&&(showed.find(j)==showed.end()))
             {
                 bool equal = true;
                 int h1_size = files[i]->hash.size();
@@ -210,16 +212,22 @@ int main(int argc, const char *argv[]) {
                     {
                         if(file1.read(str1, N).eof()) 
                             end_read = true;
-                        h_1 = hash(str1, block_size, hash_alg);
+                        if(!file1) {
+                            std::memset(str1 + file1.gcount(), 0x00, N - file1.gcount());
+                        }
+                        h_1 = hash(str1, N, hash_alg);
                         files[i]->hash.push_back(h_1);
                     }
                     if(k<h2_size)
                         h_2 = files[j]->hash[k];
                     else
                     {
-                        if(file2.read(str2, N).eof());
+                        if(file2.read(str2, N).eof())
                             end_read = true;
-                        h_2 = hash(str2, block_size, hash_alg);
+                        if(!file2) {
+                            std::memset(str2 + file2.gcount(), 0x00, N - file2.gcount());
+                        }
+                        h_2 = hash(str2, N, hash_alg);
                         files[j]->hash.push_back(h_2);
                     }
                     //std::cout << h_1 << " " << h_2 << std::endl;
@@ -232,24 +240,22 @@ int main(int argc, const char *argv[]) {
                         
                     }
                     k++;
-                    //(!file1.read(str, N).eof())&&(
                 }
 
                 if(equal)
                 {
+                    showed.insert(j);
                     if(!show_first)
                        std::cout << files[i]->path << std::endl;
                     std::cout << files[j]->path << std::endl;
                     show_first = true;
                 }
-                n_last_equal_size++; 
                 file1.close();
                 file2.close();   
             }
         }   
         if (show_first)
                std::cout << std::endl; 
-        i = n_last_equal_size;   
     }
     return 0;
 }
